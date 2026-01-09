@@ -458,12 +458,17 @@ async function compareWithClipboardContent(activeEditor: vscode.TextEditor, clip
 }
 
 function stripCommentsFromContent(content: string, options: FilterOptions): string {
+	console.log('stripCommentsFromContent called with semanticComparison:', options.semanticComparison, 'sortProperties:', options.sortProperties);
+	
 	// First, do basic comment removal
 	let result = basicCommentRemoval(content, options);
 	
 	// If semantic comparison is enabled, parse and normalize the DTS structure
 	if (options.semanticComparison) {
+		console.log('Calling semanticDtsNormalization');
 		result = semanticDtsNormalization(result, options);
+	} else {
+		console.log('Semantic comparison disabled, skipping normalization');
 	}
 	
 	return result;
@@ -602,81 +607,135 @@ function basicCommentRemoval(content: string, options: FilterOptions): string {
 }
 
 function semanticDtsNormalization(content: string, options: FilterOptions): string {
-	const lines = content.split('\n');
-	const normalizedLines: string[] = [];
-	let currentNode: {lines: string[], depth: number, baseIndent: string} | null = null;
-	let braceDepth = 0;
+	console.log('semanticDtsNormalization called, sortProperties:', options.sortProperties);
 	
-	for (let i = 0; i < lines.length; i++) {
+	// If sorting is not enabled, just return content
+	if (!options.sortProperties) {
+		console.log('Sorting disabled, returning content as-is');
+		return content;
+	}
+	
+	const lines = content.split('\n');
+	const result: string[] = [];
+	let i = 0;
+	
+	while (i < lines.length) {
 		const line = lines[i];
-		const trimmedLine = line.trim();
+		const trimmed = line.trim();
 		
-		// Skip empty lines for now, we'll add them back strategically
-		if (trimmedLine === '') {
-			if (!currentNode) {
-				normalizedLines.push('');
-			}
-			continue;
-		}
-		
-		// Count braces to track depth
-		const openBraces = (trimmedLine.match(/{/g) || []).length;
-		const closeBraces = (trimmedLine.match(/}/g) || []).length;
-		const braceChange = openBraces - closeBraces;
-		
-		// Check if this line starts a new node (contains '{')
-		if (trimmedLine.includes('{') && braceChange > 0) {
-			// If we were building a node, finalize it first
-			if (currentNode && currentNode.lines.length > 0) {
-				normalizedLines.push(...finalizeNode(currentNode.lines, options));
-				normalizedLines.push(''); // Add spacing after nodes
+		// Check if this line starts a DTS node
+		if (trimmed.match(/^[a-zA-Z0-9_-]+(\s*:\s*.*)?@?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*\{/)) {
+			const currentIndent = line.match(/^(\s*)/)?.[1] || '';
+			
+			// Simple approach: find all nodes at the same indentation level
+			const siblingNodeStarts: number[] = [];
+			let scanIndex = i;
+			
+			// Scan ahead to find sibling nodes (same indentation level)
+			while (scanIndex < lines.length) {
+				const scanLine = lines[scanIndex];
+				const scanTrimmed = scanLine.trim();
+				const scanIndent = scanLine.match(/^(\s*)/)?.[1] || '';
+				
+				// If we find a node at the same indentation level, it's a sibling
+				if ((scanTrimmed.match(/^[a-zA-Z0-9_-]+(\s*:\s*.*)?@?\s*\{/) || scanTrimmed.match(/^[a-zA-Z0-9_-]+\s*\{/)) && 
+				    scanIndent === currentIndent) {
+					siblingNodeStarts.push(scanIndex);
+					
+					// Skip past this entire node to continue scanning
+					let braceCount = 0;
+					do {
+						const lineContent = lines[scanIndex];
+						braceCount += (lineContent.match(/\{/g) || []).length - (lineContent.match(/\}/g) || []).length;
+						scanIndex++;
+					} while (braceCount > 0 && scanIndex < lines.length);
+				}
+				// If we encounter a line with less indentation, we've gone up a level
+				else if (scanTrimmed !== '' && scanIndent.length < currentIndent.length) {
+					break;
+				}
+				// Continue to next line
+				else {
+					scanIndex++;
+				}
 			}
 			
-			// Start new node
-			const baseIndent = line.match(/^(\s*)/)?.[1] || '';
-			currentNode = {
-				lines: [line],
-				depth: braceDepth + braceChange,
-				baseIndent: baseIndent
-			};
-			braceDepth += braceChange;
-		}
-		// Check if this line closes a node (contains '}' and reduces depth)
-		else if (trimmedLine.includes('}') && braceChange < 0) {
-			if (currentNode) {
-				currentNode.lines.push(line);
-				braceDepth += braceChange;
+			console.log('Found', siblingNodeStarts.length, 'sibling nodes at indentation level "' + currentIndent + '"');
+			
+			// Extract and collect all the sibling nodes
+			const nodesAtThisLevel: Array<{lines: string[], name: string}> = [];
+			
+			for (const nodeStartIdx of siblingNodeStarts) {
+				const nodeLines = [];
+				let braceCount = 0;
+				let extractIdx = nodeStartIdx;
 				
-				// If we're back to the base depth of this node, finalize it
-				if (braceDepth < currentNode.depth) {
-					normalizedLines.push(...finalizeNode(currentNode.lines, options));
-					currentNode = null;
-					normalizedLines.push(''); // Add spacing after nodes
+				// Extract complete node
+				do {
+					nodeLines.push(lines[extractIdx]);
+					const lineContent = lines[extractIdx];
+					braceCount += (lineContent.match(/\{/g) || []).length - (lineContent.match(/\}/g) || []).length;
+					extractIdx++;
+				} while (braceCount > 0 && extractIdx < lines.length);
+				
+				// Recursively process the content of this node to sort its child nodes
+				if (nodeLines.length > 2) { // Only process if node has content (more than just opening and closing braces)
+					// First, sort properties within this node using finalizeNode
+					const sortedNodeLines = finalizeNode(nodeLines, options);
+					
+					// Then recursively process child nodes within the sorted content
+					if (sortedNodeLines.length > 2) {
+						const nodeContent = sortedNodeLines.slice(1, -1).join('\n'); // Extract content between braces
+						const processedContent = semanticDtsNormalization(nodeContent, options); // Recursive call
+						const processedLines = processedContent.split('\n');
+						
+						// Rebuild the node with processed content
+						const rebuiltNode = [sortedNodeLines[0]]; // Keep opening line
+						rebuiltNode.push(...processedLines); // Add processed content
+						rebuiltNode.push(sortedNodeLines[sortedNodeLines.length - 1]); // Keep closing line
+						nodeLines.splice(0, nodeLines.length, ...rebuiltNode); // Replace original with rebuilt
+					} else {
+						// No child nodes to process, just use the property-sorted version
+						nodeLines.splice(0, nodeLines.length, ...sortedNodeLines);
+					}
 				}
-			} else {
-				// Closing brace outside of tracked node
-				normalizedLines.push(line);
-				braceDepth += braceChange;
+				
+				// Extract node name for sorting
+				let nameMatch = lines[nodeStartIdx].match(/^\s*([a-zA-Z0-9_-]+)\s*:/);
+				if (!nameMatch) {
+					nameMatch = lines[nodeStartIdx].match(/^\s*([a-zA-Z0-9_-]+)\s*\{/);
+				}
+				const name = nameMatch ? nameMatch[1] : 'zzz_unknown';
+				
+				nodesAtThisLevel.push({ lines: nodeLines, name });
 			}
-		}
-		// Line is part of current node
-		else if (currentNode) {
-			currentNode.lines.push(line);
-			braceDepth += braceChange;
-		}
-		// Line outside of any node
-		else {
-			normalizedLines.push(line);
-			braceDepth += braceChange;
+			
+			// Sort nodes alphabetically by name
+			if (nodesAtThisLevel.length > 1) {
+				console.log('Sorting nodes:', nodesAtThisLevel.map(n => n.name));
+				nodesAtThisLevel.sort((a, b) => a.name.localeCompare(b.name));
+				console.log('After sorting:', nodesAtThisLevel.map(n => n.name));
+			}
+			
+			// Add sorted nodes to result
+			for (let j = 0; j < nodesAtThisLevel.length; j++) {
+				result.push(...nodesAtThisLevel[j].lines);
+				// Add empty line between nodes (except after the last one)
+				if (j < nodesAtThisLevel.length - 1) {
+					result.push('');
+				}
+			}
+			
+			// Skip past all processed nodes
+			i = scanIndex;
+		} else {
+			// Regular line (not a node start), add as-is
+			result.push(line);
+			i++;
 		}
 	}
 	
-	// Handle any remaining node
-	if (currentNode && currentNode.lines.length > 0) {
-		normalizedLines.push(...finalizeNode(currentNode.lines, options));
-	}
-	
-	return normalizedLines.join('\n').replace(/\n{3,}/g, '\n\n');
+	return result.join('\n');
 }
 
 function finalizeNode(nodeLines: string[], options: FilterOptions): string[] {
@@ -684,11 +743,55 @@ function finalizeNode(nodeLines: string[], options: FilterOptions): string[] {
 	
 	const firstLine = nodeLines[0]; // Node declaration (e.g., "gpio6: gpio@938c00 {")
 	const lastLine = nodeLines[nodeLines.length - 1]; // Closing brace
-	const propertyLines = nodeLines.slice(1, -1); // Properties in between
+	const contentLines = nodeLines.slice(1, -1); // Content between braces
 	
 	// Determine the base indentation from the first line
 	const firstLineIndent = firstLine.match(/^(\s*)/)?.[1] || '';
 	const propertyIndent = firstLineIndent + '    '; // Add 4 spaces for properties
+	
+	// Separate child nodes from properties using better detection
+	const childNodes: string[][] = [];
+	const propertyLines: string[] = [];
+	let i = 0;
+	
+	while (i < contentLines.length) {
+		const line = contentLines[i];
+		const trimmed = line.trim();
+		
+		// Skip empty lines
+		if (trimmed === '') {
+			i++;
+			continue;
+		}
+		
+		// Better DTS child node detection: look for both "name: something {" and "name {" patterns
+		if (trimmed.match(/^[a-zA-Z0-9_-]+(\s*:\s*.*)?@?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*\{/)) {
+			// This is a child node, extract the complete node
+			const nodeLines: string[] = [];
+			let braceCount = 0;
+			let startIndex = i;
+			
+			// Extract complete child node
+			do {
+				if (i < contentLines.length) {
+					const nodeLine = contentLines[i];
+					nodeLines.push(nodeLine);
+					
+					const openBraces = (nodeLine.match(/{/g) || []).length;
+					const closeBraces = (nodeLine.match(/}/g) || []).length;
+					braceCount += openBraces - closeBraces;
+					i++;
+				}
+			} while (braceCount > 0 && i < contentLines.length);
+			
+			childNodes.push(nodeLines);
+		}
+		// It's a property line
+		else {
+			propertyLines.push(line);
+			i++;
+		}
+	}
 	
 	// Merge multi-line properties first
 	const mergedProperties: string[] = [];
@@ -762,12 +865,47 @@ function finalizeNode(nodeLines: string[], options: FilterOptions): string[] {
 		properties.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 	}
 	
+	// Process and sort child nodes if enabled
+	const processedChildNodes: Array<{lines: string[], sortKey: string}> = [];
+	
+	for (const childNodeLines of childNodes) {
+		// Recursively process each child node
+		const processedLines = finalizeNode(childNodeLines, options);
+		
+		// Extract node name for sorting (e.g., "cpuapp_data" from "cpuapp_data: memory@2f000000 {" or "cpus" from "cpus {")
+		const nodeDeclaration = childNodeLines[0];
+		let nodeNameMatch = nodeDeclaration.match(/^\s*([a-zA-Z0-9_-]+)\s*:/);
+		if (!nodeNameMatch) {
+			// Try pattern without colon (e.g., "cpus {")
+			nodeNameMatch = nodeDeclaration.match(/^\s*([a-zA-Z0-9_-]+)\s*\{/);
+		}
+		const sortKey = nodeNameMatch ? nodeNameMatch[1].trim() : 'zzz_unknown';
+		
+		processedChildNodes.push({
+			lines: processedLines,
+			sortKey: sortKey
+		});
+	}
+	
+	// Sort child nodes if enabled (this should sort cpuapp_data, cpurad_data, etc.)
+	if (options.sortProperties && processedChildNodes.length > 1) {
+		processedChildNodes.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+	}
+	
 	// Rebuild the node with proper indentation
 	const result = [firstLine];
 	
+	// Add properties first
 	properties.forEach(prop => {
 		// Apply consistent property indentation
 		result.push(propertyIndent + prop.normalized);
+	});
+	
+	// Add child nodes after properties
+	processedChildNodes.forEach(node => {
+		node.lines.forEach(line => {
+			result.push(line);
+		});
 	});
 	
 	result.push(lastLine);
