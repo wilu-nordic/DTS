@@ -7,6 +7,10 @@ interface FilterOptions {
 	stripBlockComments: boolean;
 	preserveStringLiterals: boolean;
 	normalizeWhitespace: boolean;
+	semanticComparison: boolean;
+	normalizeHexValues: boolean;
+	normalizeArrays: boolean;
+	sortProperties: boolean;
 }
 
 // Interface for saved comparison configurations
@@ -44,8 +48,17 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 		stripLineComments: true,
 		stripBlockComments: true,
 		preserveStringLiterals: true,
-		normalizeWhitespace: true
+		normalizeWhitespace: true,
+		semanticComparison: true,
+		normalizeHexValues: true,
+		normalizeArrays: true,
+		sortProperties: true
 	};
+
+	// Load saved advanced options asynchronously
+	loadAdvancedOptions(defaultOptions).then(() => {
+		console.log('Advanced options loaded');
+	});
 
 	// Register command to compare two DTS files with comment filtering
 	const compareFiles = vscode.commands.registerCommand('dtsDiff.compareFiles', async () => {
@@ -156,6 +169,11 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 		}
 	});
 
+	// Register command to delete a specific comparison directly
+	const deleteComparisonDirect = vscode.commands.registerCommand('dtsDiff.deleteComparison', async () => {
+		await deleteComparison();
+	});
+
 	// Register command to manage saved comparisons
 	const manageComparisons = vscode.commands.registerCommand('dtsDiff.manageComparisons', async () => {
 		const actions = [
@@ -214,6 +232,20 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 		}
 	});
 
+	// Register command to configure advanced comparison options
+	const configureAdvancedOptions = vscode.commands.registerCommand('dtsDiff.configureAdvancedOptions', async () => {
+		// Get the current saved options to ensure dialog shows correct state
+		const currentSavedOptions = context.globalState.get<Partial<FilterOptions>>('advancedOptions', {});
+		const currentOptions = { ...defaultOptions, ...currentSavedOptions };
+		
+		const newOptions = await showAdvancedOptionsDialog(currentOptions);
+		if (newOptions) {
+			// Update the global default options
+			Object.assign(defaultOptions, newOptions);
+			vscode.window.showInformationMessage('Advanced comparison options updated and saved');
+		}
+	});
+
 	// Register command to compare with clipboard
 	const compareWithClipboard = vscode.commands.registerCommand('dtsDiff.compareWithClipboard', async () => {
 		const activeEditor = vscode.window.activeTextEditor;
@@ -254,13 +286,15 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(
-		compareFiles, 
-		compareWithClipboard, 
+		compareFiles,
+		compareWithClipboard,
 		stripComments,
 		saveComparison,
 		loadComparison,
+		deleteComparisonDirect,
 		manageComparisons,
-		showComparisonDetails
+		showComparisonDetails,
+		configureAdvancedOptions
 	);
 }
 
@@ -424,6 +458,18 @@ async function compareWithClipboardContent(activeEditor: vscode.TextEditor, clip
 }
 
 function stripCommentsFromContent(content: string, options: FilterOptions): string {
+	// First, do basic comment removal
+	let result = basicCommentRemoval(content, options);
+	
+	// If semantic comparison is enabled, parse and normalize the DTS structure
+	if (options.semanticComparison) {
+		result = semanticDtsNormalization(result, options);
+	}
+	
+	return result;
+}
+
+function basicCommentRemoval(content: string, options: FilterOptions): string {
 	let result = '';
 	let i = 0;
 	let inBlockComment = false;
@@ -553,6 +599,378 @@ function stripCommentsFromContent(content: string, options: FilterOptions): stri
 		})
 		.join('\n')
 		.replace(/\n{3,}/g, '\n\n'); // Replace multiple empty lines with just two
+}
+
+function semanticDtsNormalization(content: string, options: FilterOptions): string {
+	const lines = content.split('\n');
+	const normalizedLines: string[] = [];
+	let currentNode: {lines: string[], depth: number, baseIndent: string} | null = null;
+	let braceDepth = 0;
+	
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const trimmedLine = line.trim();
+		
+		// Skip empty lines for now, we'll add them back strategically
+		if (trimmedLine === '') {
+			if (!currentNode) {
+				normalizedLines.push('');
+			}
+			continue;
+		}
+		
+		// Count braces to track depth
+		const openBraces = (trimmedLine.match(/{/g) || []).length;
+		const closeBraces = (trimmedLine.match(/}/g) || []).length;
+		const braceChange = openBraces - closeBraces;
+		
+		// Check if this line starts a new node (contains '{')
+		if (trimmedLine.includes('{') && braceChange > 0) {
+			// If we were building a node, finalize it first
+			if (currentNode && currentNode.lines.length > 0) {
+				normalizedLines.push(...finalizeNode(currentNode.lines, options));
+				normalizedLines.push(''); // Add spacing after nodes
+			}
+			
+			// Start new node
+			const baseIndent = line.match(/^(\s*)/)?.[1] || '';
+			currentNode = {
+				lines: [line],
+				depth: braceDepth + braceChange,
+				baseIndent: baseIndent
+			};
+			braceDepth += braceChange;
+		}
+		// Check if this line closes a node (contains '}' and reduces depth)
+		else if (trimmedLine.includes('}') && braceChange < 0) {
+			if (currentNode) {
+				currentNode.lines.push(line);
+				braceDepth += braceChange;
+				
+				// If we're back to the base depth of this node, finalize it
+				if (braceDepth < currentNode.depth) {
+					normalizedLines.push(...finalizeNode(currentNode.lines, options));
+					currentNode = null;
+					normalizedLines.push(''); // Add spacing after nodes
+				}
+			} else {
+				// Closing brace outside of tracked node
+				normalizedLines.push(line);
+				braceDepth += braceChange;
+			}
+		}
+		// Line is part of current node
+		else if (currentNode) {
+			currentNode.lines.push(line);
+			braceDepth += braceChange;
+		}
+		// Line outside of any node
+		else {
+			normalizedLines.push(line);
+			braceDepth += braceChange;
+		}
+	}
+	
+	// Handle any remaining node
+	if (currentNode && currentNode.lines.length > 0) {
+		normalizedLines.push(...finalizeNode(currentNode.lines, options));
+	}
+	
+	return normalizedLines.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function finalizeNode(nodeLines: string[], options: FilterOptions): string[] {
+	if (nodeLines.length < 2) return nodeLines;
+	
+	const firstLine = nodeLines[0]; // Node declaration (e.g., "gpio6: gpio@938c00 {")
+	const lastLine = nodeLines[nodeLines.length - 1]; // Closing brace
+	const propertyLines = nodeLines.slice(1, -1); // Properties in between
+	
+	// Determine the base indentation from the first line
+	const firstLineIndent = firstLine.match(/^(\s*)/)?.[1] || '';
+	const propertyIndent = firstLineIndent + '    '; // Add 4 spaces for properties
+	
+	// Merge multi-line properties first
+	const mergedProperties: string[] = [];
+	let currentProperty = '';
+	
+	for (let i = 0; i < propertyLines.length; i++) {
+		const line = propertyLines[i];
+		const trimmed = line.trim();
+		if (trimmed === '') continue;
+		
+		// If line doesn't end with semicolon, it might be a multi-line property
+		if (!trimmed.endsWith(';') && !trimmed.endsWith(',')) {
+			currentProperty += (currentProperty ? ' ' : '') + trimmed;
+			continue;
+		}
+		
+		// Line ends with ; or , - complete the property
+		currentProperty += (currentProperty ? ' ' : '') + trimmed;
+		
+		// If it ends with comma, check if next line continues the property
+		if (trimmed.endsWith(',') && i + 1 < propertyLines.length) {
+			const nextLine = propertyLines[i + 1].trim();
+			// If next line starts with a quote or looks like a continuation, keep building
+			if (nextLine.startsWith('"') || !nextLine.includes('=')) {
+				continue;
+			}
+		}
+		
+		// Property is complete
+		mergedProperties.push(currentProperty);
+		currentProperty = '';
+	}
+	
+	// Add any remaining property
+	if (currentProperty.trim()) {
+		mergedProperties.push(currentProperty);
+	}
+	
+	// Extract and normalize properties
+	const properties: Array<{original: string, normalized: string, sortKey: string}> = [];
+	
+	for (const propertyText of mergedProperties) {
+		let normalizedLine = propertyText;
+		let sortKey = propertyText;
+		
+		// Normalize hex values if enabled
+		if (options.normalizeHexValues) {
+			normalizedLine = normalizeHexValues(normalizedLine);
+		}
+		
+		// Normalize arrays if enabled
+		if (options.normalizeArrays) {
+			normalizedLine = normalizeArrays(normalizedLine);
+		}
+		
+		// Extract property name for sorting
+		const propertyMatch = propertyText.match(/^([^=;:]+)[:=]?/);
+		if (propertyMatch) {
+			sortKey = propertyMatch[1].trim();
+		}
+		
+		properties.push({
+			original: propertyText,
+			normalized: normalizedLine,
+			sortKey: sortKey
+		});
+	}
+	
+	// Sort properties if enabled
+	if (options.sortProperties) {
+		properties.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+	}
+	
+	// Rebuild the node with proper indentation
+	const result = [firstLine];
+	
+	properties.forEach(prop => {
+		// Apply consistent property indentation
+		result.push(propertyIndent + prop.normalized);
+	});
+	
+	result.push(lastLine);
+	return result;
+}
+
+function normalizeHexValues(line: string): string {
+	// Normalize hex values to consistent format (lowercase, consistent padding)
+	return line.replace(/0x([0-9a-fA-F]+)/g, (match, hexPart) => {
+		// Convert to lowercase and ensure consistent format
+		const normalized = hexPart.toLowerCase();
+		// Pad to even number of digits for consistency
+		const padded = normalized.length % 2 === 1 ? '0' + normalized : normalized;
+		return `0x${padded}`;
+	});
+}
+
+function normalizeArrays(line: string): string {
+	// Handle both < > style arrays and comma-separated string arrays
+	
+	// First handle < > style arrays (like reg = < 0x938c00 0x200 >)
+	line = line.replace(/<\s*([^>]+)\s*>/g, (match, content) => {
+		// Split by whitespace and filter out empty elements
+		const elements = content.trim().split(/\s+/).filter((el: string) => el.length > 0);
+		// Join with consistent spacing
+		return `< ${elements.join(' ')} >`;
+	});
+	
+	// Handle string array properties (like compatible = "str1", "str2", "str3")
+	// But preserve commas within individual quoted strings (like "nordic,nrf-gpio")
+	line = line.replace(/=\s*(["][^"]*"(?:\s*,\s*"[^"]*")*)\s*;/g, (match, content) => {
+		// Split by comma, but only on commas that are outside quotes
+		const stringElements: string[] = [];
+		let currentElement = '';
+		let inQuotes = false;
+		
+		for (let i = 0; i < content.length; i++) {
+			const char = content[i];
+			if (char === '"') {
+				inQuotes = !inQuotes;
+				currentElement += char;
+			} else if (char === ',' && !inQuotes) {
+				// This comma is between array elements, not within a string
+				stringElements.push(currentElement.trim());
+				currentElement = '';
+			} else {
+				currentElement += char;
+			}
+		}
+		if (currentElement.trim()) {
+			stringElements.push(currentElement.trim());
+		}
+		
+		// If it's a multi-element array, format with space after comma between elements only
+		if (stringElements.length > 1) {
+			const formattedElements = stringElements.join(', ');
+			return ` = ${formattedElements};`;
+		}
+		
+		// Single element, just clean up spacing
+		return ` = ${content.trim()};`;
+	});
+	
+	return line;
+}
+
+async function showAdvancedOptionsDialog(currentOptions: FilterOptions): Promise<FilterOptions | undefined> {
+	const enableItems = [];
+	const disableItems = [];
+
+	// Separate options into "enable" and "disable" actions based on current state
+	const optionConfigs = [
+		{
+			name: 'Semantic Comparison',
+			key: 'semanticComparison' as keyof FilterOptions,
+			description: 'Parse and compare DTS structure semantically',
+			detail: 'Ignores property order, focuses on content differences'
+		},
+		{
+			name: 'Sort Properties',
+			key: 'sortProperties' as keyof FilterOptions,
+			description: 'Sort properties within nodes for consistent comparison',
+			detail: 'Makes property order irrelevant in comparisons'
+		},
+		{
+			name: 'Normalize Hex Values',
+			key: 'normalizeHexValues' as keyof FilterOptions,
+			description: 'Normalize hex values to consistent format',
+			detail: 'e.g., 0x938C00 → 0x938c00 (lowercase, consistent padding)'
+		},
+		{
+			name: 'Normalize Arrays',
+			key: 'normalizeArrays' as keyof FilterOptions,
+			description: 'Normalize array formatting',
+			detail: 'e.g., <0x1 0x2> → < 0x1 0x2 > (consistent spacing)'
+		},
+		{
+			name: 'Strip Line Comments',
+			key: 'stripLineComments' as keyof FilterOptions,
+			description: 'Remove // comments from comparison',
+			detail: 'Ignores single-line comments when comparing'
+		},
+		{
+			name: 'Strip Block Comments',
+			key: 'stripBlockComments' as keyof FilterOptions,
+			description: 'Remove /* */ comments from comparison',
+			detail: 'Ignores block comments when comparing'
+		},
+		{
+			name: 'Normalize Whitespace',
+			key: 'normalizeWhitespace' as keyof FilterOptions,
+			description: 'Normalize indentation and spacing',
+			detail: 'Makes formatting differences irrelevant'
+		}
+	];
+
+	// Build items showing current state - selection will represent final desired state
+	const items = optionConfigs.map(config => {
+		const isCurrentlyEnabled = currentOptions[config.key] as boolean;
+		
+		return {
+			label: `${config.name}`,
+			description: `${config.description}`,
+			detail: `Currently: ${isCurrentlyEnabled ? 'Enabled' : 'Disabled'} | ${config.detail}`,
+			key: config.key,
+			currentState: isCurrentlyEnabled
+		};
+	});
+
+	// Create a custom QuickPick to support pre-selection
+	const quickPick = vscode.window.createQuickPick();
+	quickPick.title = 'Advanced Comparison Options';
+	quickPick.placeholder = 'Select which features you want enabled (checked = enabled, unchecked = disabled)';
+	quickPick.canSelectMany = true;
+	quickPick.ignoreFocusOut = true;
+	quickPick.matchOnDescription = true;
+	quickPick.matchOnDetail = true;
+	quickPick.items = items;
+	
+	// Pre-select items that are currently enabled
+	quickPick.selectedItems = items.filter(item => item.currentState);
+
+	return new Promise<FilterOptions | undefined>((resolve) => {
+		quickPick.onDidAccept(() => {
+			const selectedItems = quickPick.selectedItems as Array<{
+				label: string;
+				description: string;
+				detail: string;
+				key: keyof FilterOptions;
+				currentState: boolean;
+			}>;
+			quickPick.hide();
+
+			// Build new options based on what's selected (not toggled)
+			const newOptions = { ...currentOptions };
+			
+			// Set all options based on selection state
+			optionConfigs.forEach(config => {
+				const isSelected = selectedItems.some(item => item.key === config.key);
+				(newOptions[config.key] as boolean) = isSelected;
+			});
+
+			// Save the new configuration
+			saveAdvancedOptions(newOptions).then(() => {
+				// Show summary of changes
+				const changes: string[] = [];
+				optionConfigs.forEach(config => {
+					const oldValue = currentOptions[config.key] as boolean;
+					const newValue = newOptions[config.key] as boolean;
+					if (oldValue !== newValue) {
+						changes.push(`${config.key}: ${newValue ? 'Enabled' : 'Disabled'}`);
+					}
+				});
+				
+				if (changes.length > 0) {
+					vscode.window.showInformationMessage(`Updated options:\n${changes.join('\n')}`);
+				}
+				
+				resolve(newOptions);
+			});
+		});
+
+		quickPick.onDidHide(() => {
+			quickPick.dispose();
+			resolve(undefined);
+		});
+
+		quickPick.show();
+	});
+}
+
+async function loadAdvancedOptions(defaultOptions: FilterOptions): Promise<void> {
+	const saved = context.globalState.get<Partial<FilterOptions>>('advancedOptions', {});
+	
+	// Merge saved options with defaults
+	Object.assign(defaultOptions, saved);
+	
+	console.log('Loaded advanced options:', defaultOptions);
+}
+
+async function saveAdvancedOptions(options: FilterOptions): Promise<void> {
+	await context.globalState.update('advancedOptions', options);
+	console.log('Saved advanced options:', options);
 }
 
 export function deactivate() {
@@ -730,28 +1148,75 @@ async function deleteComparison() {
 	const items = savedConfigurations.map(config => ({
 		label: config.name,
 		description: `${getShortPath(config.file1Path)} ↔ ${getShortPath(config.file2Path)}`,
-		detail: `Full paths: ${config.file1Path} | ${config.file2Path}`,
+		detail: `${config.autoRefresh ? '🔄 Auto-refresh' : '⏸️ Manual'} | Created: ${new Date(config.created).toLocaleDateString()}`,
 		config: config
 	}));
 
+	// Add option to delete all configurations
+	if (savedConfigurations.length > 1) {
+		items.unshift({
+			label: '$(trash) Delete ALL Configurations',
+			description: `Delete all ${savedConfigurations.length} saved configurations`,
+			detail: 'This action cannot be undone',
+			config: null as any
+		});
+	}
+
 	const selected = await vscode.window.showQuickPick(items, {
-		placeHolder: 'Select comparison to delete'
+		placeHolder: `Select comparison to delete (${savedConfigurations.length} total)`,
+		matchOnDescription: true,
+		matchOnDetail: true
 	});
 
 	if (selected) {
-		// Clean up watchers
-		const watchers = activeWatchers.get(selected.config.id);
-		if (watchers) {
-			watchers.forEach(watcher => watcher.dispose());
-			activeWatchers.delete(selected.config.id);
+		if (selected.config === null) {
+			// Delete all configurations
+			const confirmation = await vscode.window.showWarningMessage(
+				`Are you sure you want to delete ALL ${savedConfigurations.length} saved comparison configurations? This action cannot be undone.`,
+				{ modal: true },
+				'Delete All',
+				'Cancel'
+			);
+
+			if (confirmation === 'Delete All') {
+				// Clean up all watchers
+				activeWatchers.forEach(watchers => {
+					watchers.forEach(watcher => watcher.dispose());
+				});
+				activeWatchers.clear();
+
+				// Clear all configurations
+				savedConfigurations = [];
+				await saveConfigurations();
+				updateStatusBar();
+
+				vscode.window.showInformationMessage('All comparison configurations have been deleted');
+			}
+		} else {
+			// Delete single configuration
+			const confirmation = await vscode.window.showWarningMessage(
+				`Are you sure you want to delete the comparison configuration "${selected.config.name}"?`,
+				{ modal: true },
+				'Delete',
+				'Cancel'
+			);
+
+			if (confirmation === 'Delete') {
+				// Clean up watchers
+				const watchers = activeWatchers.get(selected.config.id);
+				if (watchers) {
+					watchers.forEach(watcher => watcher.dispose());
+					activeWatchers.delete(selected.config.id);
+				}
+
+				// Remove from saved configurations
+				savedConfigurations = savedConfigurations.filter(c => c.id !== selected.config.id);
+				await saveConfigurations();
+				updateStatusBar();
+
+				vscode.window.showInformationMessage(`Deleted comparison configuration "${selected.config.name}"`);
+			}
 		}
-
-		// Remove from saved configurations
-		savedConfigurations = savedConfigurations.filter(c => c.id !== selected.config.id);
-		await saveConfigurations();
-		updateStatusBar();
-
-		vscode.window.showInformationMessage(`Deleted comparison configuration "${selected.config.name}"`);
 	}
 }
 

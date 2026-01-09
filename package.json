@@ -61,6 +61,16 @@
         "command": "dtsDiff.showComparisonDetails",
         "title": "DTS: Show Active Comparison Details",
         "icon": "$(info)"
+      },
+      {
+        "command": "dtsDiff.configureAdvancedOptions",
+        "title": "DTS: Configure Advanced Comparison Options",
+        "icon": "$(settings)"
+      },
+      {
+        "command": "dtsDiff.deleteComparison",
+        "title": "DTS: Delete Saved Comparison",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -117,6 +127,9 @@
         },
         {
           "command": "dtsDiff.showComparisonDetails"
+        },
+        {
+          "command": "dtsDiff.configureAdvancedOptions"
         }
       ]
     }
