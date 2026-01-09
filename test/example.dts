@@ -1,0 +1,66 @@
+/* Sample Device Tree Source file for testing */
+
+/dts-v1/;
+
+/ {
+    model = "Example Board"; // Board identifier
+    compatible = "vendor,example-board";
+    
+    /* Memory configuration */
+    memory@80000000 {
+        device_type = "memory";
+        reg = <0x80000000 0x20000000>; // 512MB RAM
+    };
+    
+    cpus {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        
+        cpu@0 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a7";
+            reg = <0>; // CPU core 0
+        };
+        
+        // Second CPU core
+        cpu@1 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a7";
+            reg = <1>;
+        };
+    };
+    
+    /* 
+     * Peripheral bus configuration
+     * Contains all the basic peripherals
+     */
+    peripheral_bus: bus@40000000 {
+        compatible = "simple-bus";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges = <0x40000000 0x40000000 0x20000000>;
+        
+        uart0: serial@40001000 {
+            compatible = "vendor,uart";
+            reg = <0x40001000 0x1000>; // UART register space
+            interrupts = <20>;
+            status = "okay";
+        };
+        
+        // SPI controller
+        spi0: spi@40002000 {
+            compatible = "vendor,spi";
+            reg = <0x40002000 0x1000>;
+            interrupts = <21>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+            
+            /* SPI flash device */
+            flash@0 {
+                compatible = "jedec,spi-nor";
+                reg = <0>;
+                spi-max-frequency = <25000000>;
+            };
+        };
+    };
+};

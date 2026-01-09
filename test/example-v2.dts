@@ -1,0 +1,93 @@
+/* Modified Device Tree Source file for testing */
+
+/dts-v1/;
+
+/ {
+    model = "Example Board v2"; // Updated board identifier
+    compatible = "vendor,example-board-v2";
+    
+    /* Memory configuration - upgraded */
+    memory@80000000 {
+        device_type = "memory";
+        reg = <0x80000000 0x40000000>; // 1GB RAM - doubled
+    };
+    
+    cpus {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        
+        cpu@0 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a15"; // Upgraded CPU
+            reg = <0>;
+        };
+        
+        // Second CPU core - also upgraded
+        cpu@1 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a15";
+            reg = <1>;
+        };
+        
+        // Added third CPU core
+        cpu@2 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a15";
+            reg = <2>;
+        };
+    };
+    
+    /* 
+     * Peripheral bus configuration
+     * Enhanced with additional peripherals
+     */
+    peripheral_bus: bus@40000000 {
+        compatible = "simple-bus";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges = <0x40000000 0x40000000 0x20000000>;
+        
+        uart0: serial@40001000 {
+            compatible = "vendor,uart-v2"; // Updated UART
+            reg = <0x40001000 0x1000>;
+            interrupts = <20>;
+            status = "okay";
+            clock-frequency = <115200>; // Added clock config
+        };
+        
+        // Enhanced SPI controller
+        spi0: spi@40002000 {
+            compatible = "vendor,spi-v2";
+            reg = <0x40002000 0x1000>;
+            interrupts = <21>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+            
+            /* Larger SPI flash device */
+            flash@0 {
+                compatible = "jedec,spi-nor";
+                reg = <0>;
+                spi-max-frequency = <50000000>; // Doubled frequency
+                partitions {
+                    compatible = "fixed-partitions";
+                    #address-cells = <1>;
+                    #size-cells = <1>;
+                    
+                    boot@0 {
+                        label = "boot";
+                        reg = <0x0 0x100000>;
+                    };
+                };
+            };
+        };
+        
+        /* New I2C controller */
+        i2c0: i2c@40003000 {
+            compatible = "vendor,i2c";
+            reg = <0x40003000 0x1000>;
+            interrupts = <22>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+        };
+    };
+};
