@@ -675,33 +675,38 @@ function semanticDtsNormalization(content: string, options: FilterOptions): stri
 	// Add non-node lines that come before any nodes
 	const firstNodeLine = topLevelNodes.length > 0 ? Math.min(...topLevelNodes.map(n => n.startLine)) : lines.length;
 	nonNodeLines
-		.filter(item => item.lineNumber < firstNodeLine)
+		.filter(item => item.lineNumber < firstNodeLine && item.line.trim() !== '')
 		.forEach(item => result.push(item.line));
 	
 	// Process and add sorted top-level nodes
 	topLevelNodes.forEach((node, idx) => {
 		console.log(`DEBUG: Processing top-level node ${idx + 1}/${topLevelNodes.length}: "${node.sortKey}"`);
 		const processedNode = finalizeNode(node.lines, options, 0, node.sortKey);
+		
+		// Add a blank line between nodes (but not before the first node)
+		if (idx > 0) {
+			result.push('');
+		}
+		
 		result.push(...processedNode);
 		console.log(`DEBUG: Top-level node processed, added ${processedNode.length} lines to result`);
-		
-		// Add any non-node lines that were between this node and the next
-		if (idx < topLevelNodes.length - 1) {
-			const nextNodeLine = topLevelNodes[idx + 1].startLine;
-			const currentNodeEndLine = node.startLine + node.lines.length - 1;
-			nonNodeLines
-				.filter(item => item.lineNumber > currentNodeEndLine && item.lineNumber < nextNodeLine)
-				.forEach(item => result.push(item.line));
-		}
 	});
 	
-	// Add any remaining non-node lines after all nodes
+	// Add any remaining non-node lines after all nodes (only non-empty ones)
 	if (topLevelNodes.length > 0) {
 		const lastNodeEndLine = topLevelNodes[topLevelNodes.length - 1].startLine + 
 			topLevelNodes[topLevelNodes.length - 1].lines.length - 1;
-		nonNodeLines
-			.filter(item => item.lineNumber > lastNodeEndLine)
-			.forEach(item => result.push(item.line));
+		const remainingLines = nonNodeLines
+			.filter(item => item.lineNumber > lastNodeEndLine && item.line.trim() !== '');
+		if (remainingLines.length > 0) {
+			result.push('');
+			remainingLines.forEach(item => result.push(item.line));
+		}
+	}
+	
+	// Remove any trailing empty lines before returning
+	while (result.length > 0 && result[result.length - 1].trim() === '') {
+		result.pop();
 	}
 	
 	return result.join('\n');
@@ -892,19 +897,29 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 	console.log(`${indent}DEBUG: Rebuilding node with ${properties.length} properties and ${processedChildNodes.length} child nodes`);
 	
 	// Add properties first
-	properties.forEach(prop => {
-		// Strip existing indentation and apply consistent property indentation
-		const cleanLine = prop.normalized.trim();
-		result.push(propertyIndent + cleanLine);
-	});
-	
-	// Add child nodes after properties
-	processedChildNodes.forEach((node, idx) => {
-		console.log(`${indent}  DEBUG: Adding child node ${idx + 1}: "${node.sortKey}" (${node.lines.length} lines)`);
-		node.lines.forEach(line => {
-			result.push(line);
+	const hasProperties = properties.length > 0;
+	if (hasProperties) {
+		properties.forEach(prop => {
+			// Strip existing indentation and apply consistent property indentation
+			const cleanLine = prop.normalized.trim();
+			result.push(propertyIndent + cleanLine);
 		});
-	});
+	}
+	
+	// Add child nodes after properties with appropriate spacing
+	if (processedChildNodes.length > 0) {
+		// Add spacing between properties and child nodes only if we have both
+		if (hasProperties) {
+			result.push('');
+		}
+		
+		processedChildNodes.forEach((node, idx) => {
+			console.log(`${indent}  DEBUG: Adding child node ${idx + 1}: "${node.sortKey}" (${node.lines.length} lines)`);
+			node.lines.forEach(line => {
+				result.push(line);
+			});
+		});
+	}
 	
 	result.push(lastLine);
 	console.log(`${indent}DEBUG: Node rebuild complete (${result.length} total lines)`);
