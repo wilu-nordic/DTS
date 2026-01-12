@@ -1,8 +1,8 @@
 {
-  "name": "dts-diff-tool",
-  "displayName": "DTS Diff Tool",
-  "description": "Compare Device Tree Source files with comment filtering",
-  "version": "1.0.3",
+  "name": "dts-zephyrdiff-tool",
+  "displayName": "DTS ZephyrDiff Tool",
+  "description": "Compare Zephyr Device Tree Source files with comment filtering",
+  "version": "1.0.4",
   "publisher": "wilu",
   "engines": {
     "vscode": "^1.74.0"
@@ -11,7 +11,9 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:dts"
+    "onLanguage:dts",
+    "onCommand:zephyrDiff.compareConfigFiles",
+    "onCommand:zephyrDiff.saveConfigComparison"
   ],
   "main": "./out/extension.js",
   "repository": {
@@ -21,9 +23,10 @@
   "keywords": [
     "dts",
     "device-tree",
-    "diff",
+    "zephyrdiff",
     "compare",
-    "embedded"
+    "embedded",
+    "zephyr"
   ],
   "contributes": {
     "languages": [
@@ -42,108 +45,149 @@
     ],
     "commands": [
       {
-        "command": "dtsDiff.compareFiles",
-        "title": "DTS: Compare Files",
+        "command": "zephyrDiff.compareFiles",
+        "title": "ZephyrDiff: Compare DTS Files",
         "icon": "$(diff)"
       },
       {
-        "command": "dtsDiff.compareWithClipboard",
-        "title": "DTS: Compare with Clipboard",
+        "command": "zephyrDiff.compareConfigFiles",
+        "title": "ZephyrDiff: Compare Zephyr .config Files",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "zephyrDiff.compareWithClipboard",
+        "title": "ZephyrDiff: Compare DTS with Clipboard",
         "icon": "$(clippy)"
       },
       {
-        "command": "dtsDiff.stripComments",
-        "title": "DTS: Copy formatted file",
+        "command": "zephyrDiff.stripComments",
+        "title": "ZephyrDiff: Copy formatted DTS file",
         "icon": "$(clippy)"
       },
       {
-        "command": "dtsDiff.saveComparison",
-        "title": "DTS: Save Comparison Configuration",
+        "command": "zephyrDiff.saveComparison",
+        "title": "ZephyrDiff: Save DTS Comparison Configuration",
         "icon": "$(save)"
       },
       {
-        "command": "dtsDiff.loadComparison",
-        "title": "DTS: Load Saved Comparison",
+        "command": "zephyrDiff.saveConfigComparison",
+        "title": "ZephyrDiff: Save Zephyr .config Comparison Configuration",
+        "icon": "$(save)"
+      },
+      {
+        "command": "zephyrDiff.loadComparison",
+        "title": "ZephyrDiff: Load Saved DTS Comparison",
         "icon": "$(folder-opened)"
       },
       {
-        "command": "dtsDiff.manageComparisons",
-        "title": "DTS: Manage Comparison Configurations",
+        "command": "zephyrDiff.manageComparisons",
+        "title": "ZephyrDiff: Manage DTS Comparison Configurations",
         "icon": "$(settings-gear)"
       },
       {
-        "command": "dtsDiff.showComparisonDetails",
-        "title": "DTS: Show Active Comparison Details",
+        "command": "zephyrDiff.showComparisonDetails",
+        "title": "ZephyrDiff: Show Active DTS Comparison Details",
         "icon": "$(info)"
       },
       {
-        "command": "dtsDiff.configureAdvancedOptions",
-        "title": "DTS: Configure Advanced Comparison Options",
+        "command": "zephyrDiff.configureAdvancedOptions",
+        "title": "ZephyrDiff: Configure Advanced DTS Comparison Options",
         "icon": "$(settings)"
       },
       {
-        "command": "dtsDiff.deleteComparison",
-        "title": "DTS: Delete Saved Comparison",
+        "command": "zephyrDiff.deleteComparison",
+        "title": "ZephyrDiff: Delete Saved DTS Comparison",
         "icon": "$(trash)"
       }
     ],
     "menus": {
       "explorer/context": [
         {
-          "command": "dtsDiff.compareFiles",
+          "command": "zephyrDiff.compareFiles",
           "when": "resourceExtname == .dts || resourceExtname == .dtsi",
           "group": "7_modification"
         },
         {
-          "command": "dtsDiff.saveComparison",
+          "command": "zephyrDiff.saveComparison",
           "when": "resourceExtname == .dts || resourceExtname == .dtsi",
           "group": "7_modification"
         },
         {
-          "command": "dtsDiff.stripComments",
+          "command": "zephyrDiff.stripComments",
           "when": "resourceExtname == .dts || resourceExtname == .dtsi",
+          "group": "7_modification"
+        },
+        {
+          "command": "zephyrDiff.compareConfigFiles",
+          "when": "resourceFilename == .config",
+          "group": "7_modification"
+        },
+        {
+          "command": "zephyrDiff.saveConfigComparison",
+          "when": "resourceFilename == .config",
           "group": "7_modification"
         }
       ],
       "editor/context": [
         {
-          "command": "dtsDiff.compareWithClipboard",
+          "command": "zephyrDiff.compareFiles",
+          "when": "resourceExtname == .dts || resourceExtname == .dtsi",
+          "group": "navigation"
+        },
+        {
+          "command": "zephyrDiff.compareConfigFiles",
+          "when": "resourceFilename == .config || resourceExtname == .config",
+          "group": "navigation"
+        },
+        {
+          "command": "zephyrDiff.compareWithClipboard",
           "when": "resourceExtname == .dts || resourceExtname == .dtsi",
           "group": "9_cutcopypaste"
         },
         {
-          "command": "dtsDiff.stripComments",
+          "command": "zephyrDiff.stripComments",
           "when": "resourceExtname == .dts || resourceExtname == .dtsi",
+          "group": "1_modification"
+        },
+        {
+          "command": "zephyrDiff.saveConfigComparison",
+          "when": "resourceFilename == .config || resourceExtname == .config",
           "group": "1_modification"
         }
       ],
       "commandPalette": [
         {
-          "command": "dtsDiff.compareFiles",
+          "command": "zephyrDiff.compareFiles",
           "when": "editorLangId == 'dts'"
         },
         {
-          "command": "dtsDiff.compareWithClipboard",
+          "command": "zephyrDiff.compareConfigFiles"
+        },
+        {
+          "command": "zephyrDiff.compareWithClipboard",
           "when": "editorLangId == 'dts'"
         },
         {
-          "command": "dtsDiff.stripComments",
+          "command": "zephyrDiff.stripComments",
           "when": "editorLangId == 'dts'"
         },
         {
-          "command": "dtsDiff.saveComparison"
+          "command": "zephyrDiff.saveComparison"
         },
         {
-          "command": "dtsDiff.loadComparison"
+          "command": "zephyrDiff.saveConfigComparison"
         },
         {
-          "command": "dtsDiff.manageComparisons"
+          "command": "zephyrDiff.loadComparison"
         },
         {
-          "command": "dtsDiff.showComparisonDetails"
+          "command": "zephyrDiff.manageComparisons"
         },
         {
-          "command": "dtsDiff.configureAdvancedOptions"
+          "command": "zephyrDiff.showComparisonDetails"
+        },
+        {
+          "command": "zephyrDiff.configureAdvancedOptions"
         }
       ]
     }

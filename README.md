@@ -1,10 +1,10 @@
-# DTS Diff Tool
+# ZephyrDiff Tool
 
-A powerful VS Code extension for comparing and formatting Device Tree Source (.dts) files with comprehensive semantic normalization.
+A powerful VS Code extension for comparing and formatting Zephyr Device Tree Source (.dts) files with comprehensive semantic normalization.
 
 ## Features
 
-### 🔍 **Smart DTS Comparison**
+### 🔍 **Smart ZephyrDiff Comparison**
 - **Semantic comparison** with node and property sorting
 - **Comment filtering** - Focus on actual code differences
 - **Recursive node sorting** - All nested nodes sorted alphabetically
@@ -27,10 +27,10 @@ A powerful VS Code extension for comparing and formatting Device Tree Source (.d
 
 ## Usage
 
-### Compare Two DTS Files
+### Compare Two Zephyr DTS Files
 1. Open a `.dts` or `.dtsi` file in VS Code
 2. Right-click in the file explorer or editor
-3. Select **"DTS: Compare Files"**
+3. Select **"ZephyrDiff: Compare Files"**
 4. Choose the second file to compare
 5. View semantic diff with normalized content
 
@@ -38,22 +38,22 @@ A powerful VS Code extension for comparing and formatting Device Tree Source (.d
 1. Copy DTS content to clipboard
 2. Open a `.dts` file in VS Code
 3. Right-click in the editor
-4. Select **"DTS: Compare with Clipboard"**
+4. Select **"ZephyrDiff: Compare with Clipboard"**
 
 ### Copy Formatted File
 1. Open a `.dts` file in VS Code
 2. Right-click in the editor
-3. Select **"DTS: Copy formatted file"**
+3. Select **"ZephyrDiff: Copy formatted file"**
 4. Fully normalized content is copied to clipboard
 
 ### Save Comparison Configuration
-1. Open a `.dts` file and run **"DTS: Save Comparison Configuration"**
+1. Open a `.dts` file and run **"ZephyrDiff: Save Comparison Configuration"**
 2. Enter a configuration name
 3. Select second file to compare
 4. Configuration saved for future use
 
 ### Configure Advanced Options
-- Run **"DTS: Configure Advanced Comparison Options"**
+- Run **"ZephyrDiff: Configure Advanced Comparison Options"**
 - Enable/disable:
   - Semantic comparison
   - Property sorting
@@ -66,14 +66,14 @@ A powerful VS Code extension for comparing and formatting Device Tree Source (.d
 
 All commands are available via Command Palette (`Ctrl+Shift+P`):
 
-- **`DTS: Compare Files`** - Compare two DTS files
-- **`DTS: Compare with Clipboard`** - Compare with clipboard content
-- **`DTS: Copy formatted file`** - Copy normalized DTS to clipboard
-- **`DTS: Save Comparison Configuration`** - Save comparison setup
-- **`DTS: Load Saved Comparison`** - Run saved comparison
-- **`DTS: Manage Comparison Configurations`** - Manage saved configurations
-- **`DTS: Configure Advanced Comparison Options`** - Configure normalization options
-- **`DTS: Delete Saved Comparison`** - Remove saved configuration
+- **`ZephyrDiff: Compare Files`** - Compare two DTS files
+- **`ZephyrDiff: Compare with Clipboard`** - Compare with clipboard content
+- **`ZephyrDiff: Copy formatted file`** - Copy normalized DTS to clipboard
+- **`ZephyrDiff: Save Comparison Configuration`** - Save comparison setup
+- **`ZephyrDiff: Load Saved Comparison`** - Run saved comparison
+- **`ZephyrDiff: Manage Comparison Configurations`** - Manage saved configurations
+- **`ZephyrDiff: Configure Advanced Comparison Options`** - Configure normalization options
+- **`ZephyrDiff: Delete Saved Comparison`** - Remove saved configuration
 
 ## Semantic Normalization
 

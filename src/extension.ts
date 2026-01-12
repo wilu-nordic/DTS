@@ -31,12 +31,12 @@ let context: vscode.ExtensionContext;
 let statusBarItem: vscode.StatusBarItem;
 
 export function activate(extensionContext: vscode.ExtensionContext) {
-	console.log('DTS Diff Tool extension is now active!');
+	console.log('ZephyrDiff Tool extension is now active!');
 	context = extensionContext;
 
 	// Create status bar item for showing comparison info
 	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-	statusBarItem.command = 'dtsDiff.loadComparison';
+	statusBarItem.command = 'zephyrDiff.loadComparison';
 	context.subscriptions.push(statusBarItem);
 
 	// Load saved configurations
@@ -60,8 +60,8 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 		console.log('Advanced options loaded');
 	});
 
-	// Register command to compare two DTS files with comment filtering
-	const compareFiles = vscode.commands.registerCommand('dtsDiff.compareFiles', async () => {
+	// Register command to compare two Zephyr DTS files with comment filtering
+	const compareFiles = vscode.commands.registerCommand('zephyrDiff.compareFiles', async () => {
 		const activeEditor = vscode.window.activeTextEditor;
 		if (!activeEditor) {
 			vscode.window.showErrorMessage('Please open a .dts or .dtsi file first');
@@ -90,11 +90,80 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 			return;
 		}
 
-		await compareDtsFiles(activeEditor.document.uri, fileUri[0], context, defaultOptions);
+		await compareZephyrFiles(activeEditor.document.uri, fileUri[0], context, defaultOptions);
+	});
+
+	// Register command to compare two .config files with filtering
+	const compareConfigFilesCmd = vscode.commands.registerCommand('zephyrDiff.compareConfigFiles', async () => {
+		const activeEditor = vscode.window.activeTextEditor;
+		if (!activeEditor) {
+			vscode.window.showErrorMessage('Please open a .config file first');
+			return;
+		}
+
+		// Validate file extension
+		const fileName = path.basename(activeEditor.document.fileName);
+		if (fileName !== '.config' && !fileName.endsWith('.config')) {
+			vscode.window.showErrorMessage('This command only works with .config files');
+			return;
+		}
+
+		// Show file picker for second file
+		const fileUri = await vscode.window.showOpenDialog({
+			canSelectMany: false,
+			openLabel: 'Select .config file to compare with',
+			filters: {
+				'Config Files': ['config'],
+				'All Files': ['*']
+			},
+			defaultUri: vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.uri
+		});
+
+		if (!fileUri || fileUri.length === 0) {
+			return;
+		}
+
+		await compareConfigFilesImpl(activeEditor.document.uri, fileUri[0], context, defaultOptions);
+	});
+
+	// Register command to save current .config comparison configuration
+	const saveConfigComparison = vscode.commands.registerCommand('zephyrDiff.saveConfigComparison', async () => {
+		const activeEditor = vscode.window.activeTextEditor;
+		if (!activeEditor) {
+			vscode.window.showErrorMessage('Please open a .config file first');
+			return;
+		}
+
+		// Show file picker for second file
+		const fileUri = await vscode.window.showOpenDialog({
+			canSelectMany: false,
+			openLabel: 'Select .config file to compare with',
+			filters: {
+				'Config Files': ['config'],
+				'All Files': ['*']
+			},
+			defaultUri: vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)?.uri
+		});
+
+		if (!fileUri || fileUri.length === 0) {
+			return;
+		}
+
+		// Ask for configuration name
+		const configName = await vscode.window.showInputBox({
+			prompt: 'Enter a name for this .config comparison configuration',
+			placeHolder: 'e.g., "Config: Development vs Release"'
+		});
+
+		if (!configName) {
+			return;
+		}
+
+		await saveComparisonConfig(activeEditor.document.uri, fileUri[0], configName, false, defaultOptions);
 	});
 
 	// Register command to save current comparison configuration
-	const saveComparison = vscode.commands.registerCommand('dtsDiff.saveComparison', async () => {
+	const saveComparison = vscode.commands.registerCommand('zephyrDiff.saveComparison', async () => {
 		const activeEditor = vscode.window.activeTextEditor;
 		if (!activeEditor) {
 			vscode.window.showErrorMessage('Please open a .dts or .dtsi file first');
@@ -130,7 +199,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 	});
 
 	// Register command to load and run saved comparison
-	const loadComparison = vscode.commands.registerCommand('dtsDiff.loadComparison', async () => {
+	const loadComparison = vscode.commands.registerCommand('zephyrDiff.loadComparison', async () => {
 		if (savedConfigurations.length === 0) {
 			vscode.window.showInformationMessage('No saved comparison configurations found');
 			return;
@@ -162,12 +231,12 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 	});
 
 	// Register command to delete a specific comparison directly
-	const deleteComparisonDirect = vscode.commands.registerCommand('dtsDiff.deleteComparison', async () => {
+	const deleteComparisonDirect = vscode.commands.registerCommand('zephyrDiff.deleteComparison', async () => {
 		await deleteComparison();
 	});
 
 	// Register command to manage saved comparisons
-	const manageComparisons = vscode.commands.registerCommand('dtsDiff.manageComparisons', async () => {
+	const manageComparisons = vscode.commands.registerCommand('zephyrDiff.manageComparisons', async () => {
 		const actions = [
 			'View saved comparisons',
 			'Delete a comparison',
@@ -196,7 +265,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 	});
 
 	// Register command to show current comparison details
-	const showComparisonDetails = vscode.commands.registerCommand('dtsDiff.showComparisonDetails', async () => {
+	const showComparisonDetails = vscode.commands.registerCommand('zephyrDiff.showComparisonDetails', async () => {
 		const activeConfigs = savedConfigurations.filter(config => config.autoRefresh);
 		
 		if (activeConfigs.length === 0) {
@@ -225,7 +294,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 	});
 
 	// Register command to configure advanced comparison options
-	const configureAdvancedOptions = vscode.commands.registerCommand('dtsDiff.configureAdvancedOptions', async () => {
+	const configureAdvancedOptions = vscode.commands.registerCommand('zephyrDiff.configureAdvancedOptions', async () => {
 		// Get the current saved options to ensure dialog shows correct state
 		const currentSavedOptions = context.globalState.get<Partial<FilterOptions>>('advancedOptions', {});
 		const currentOptions = { ...defaultOptions, ...currentSavedOptions };
@@ -239,7 +308,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 	});
 
 	// Register command to compare with clipboard
-	const compareWithClipboard = vscode.commands.registerCommand('dtsDiff.compareWithClipboard', async () => {
+	const compareWithClipboard = vscode.commands.registerCommand('zephyrDiff.compareWithClipboard', async () => {
 		const activeEditor = vscode.window.activeTextEditor;
 		if (!activeEditor) {
 			vscode.window.showErrorMessage('Please open a .dts or .dtsi file first');
@@ -256,7 +325,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 	});
 
 	// Register command to strip comments from current file
-	const stripComments = vscode.commands.registerCommand('dtsDiff.stripComments', async () => {
+	const stripComments = vscode.commands.registerCommand('zephyrDiff.stripComments', async () => {
 		const activeEditor = vscode.window.activeTextEditor;
 		if (!activeEditor) {
 			vscode.window.showErrorMessage('Please open a .dts or .dtsi file first');
@@ -274,14 +343,16 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 		});
 		
 		await vscode.window.showTextDocument(newDoc, vscode.ViewColumn.Beside);
-		vscode.window.showInformationMessage('Comments stripped from DTS file');
+		vscode.window.showInformationMessage('Comments stripped from Zephyr DTS file');
 	});
 
 	context.subscriptions.push(
 		compareFiles,
+		compareConfigFilesCmd,
 		compareWithClipboard,
 		stripComments,
 		saveComparison,
+		saveConfigComparison,
 		loadComparison,
 		deleteComparisonDirect,
 		manageComparisons,
@@ -290,7 +361,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 	);
 }
 
-async function compareDtsFiles(file1Uri: vscode.Uri, file2Uri: vscode.Uri, context: vscode.ExtensionContext, options: FilterOptions) {
+async function compareZephyrFiles(file1Uri: vscode.Uri, file2Uri: vscode.Uri, context: vscode.ExtensionContext, options: FilterOptions) {
 	try {
 		// Read both files
 		const file1Content = await vscode.workspace.fs.readFile(file1Uri);
@@ -402,6 +473,105 @@ async function compareDtsFiles(file1Uri: vscode.Uri, file2Uri: vscode.Uri, conte
 		
 	} catch (error) {
 		vscode.window.showErrorMessage(`Error comparing files: ${error}`);
+	}
+}
+
+async function compareConfigFilesImpl(file1Uri: vscode.Uri, file2Uri: vscode.Uri, context: vscode.ExtensionContext, options: FilterOptions) {
+	try {
+		// Read both files
+		const file1Content = await vscode.workspace.fs.readFile(file1Uri);
+		const file2Content = await vscode.workspace.fs.readFile(file2Uri);
+
+		// Convert to string and filter comments
+		const file1Text = filterConfigComments(file1Content.toString(), options);
+		const file2Text = filterConfigComments(file2Content.toString(), options);
+
+		console.log(`Config File 1 path: ${file1Uri.path}`);
+		console.log(`Config File 2 path: ${file2Uri.path}`);
+		console.log(`Config File 1 length after filtering: ${file1Text.length}`);
+		console.log(`Config File 2 length after filtering: ${file2Text.length}`);
+		console.log(`Config files are identical after filtering: ${file1Text === file2Text}`);
+
+		if (file1Text === file2Text) {
+			vscode.window.showInformationMessage('The .config files are identical after comment filtering');
+			return;
+		}
+
+		// Create temporary files for comparison
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			vscode.window.showErrorMessage('No workspace folder found');
+			return;
+		}
+		
+		const tempDir = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode', 'dts-diff-temp');
+		
+		// Ensure temp directory exists
+		try {
+			await vscode.workspace.fs.createDirectory(tempDir);
+		} catch (error) {
+			// Directory might already exist
+		}
+
+		const timestamp = Date.now();
+		const tempFile1 = vscode.Uri.joinPath(tempDir, `.config.1.${timestamp}.config`);
+		const tempFile2 = vscode.Uri.joinPath(tempDir, `.config.2.${timestamp}.config`);
+
+		// Write filtered content to temp files
+		await vscode.workspace.fs.writeFile(tempFile1, Buffer.from(file1Text));
+		await vscode.workspace.fs.writeFile(tempFile2, Buffer.from(file2Text));
+
+		// Get file names and directories
+		const file1Name = path.basename(file1Uri.path);
+		const file2Name = path.basename(file2Uri.path);
+		const file1Dir = path.dirname(file1Uri.path).split('/').pop();
+		const file2Dir = path.dirname(file2Uri.path).split('/').pop();
+
+		// Open diff view
+		const file1DisplayName = file1Name === file2Name ? `${file1Dir}/${file1Name}` : file1Name;
+		const file2DisplayName = file1Name === file2Name ? `${file2Dir}/${file2Name}` : file2Name;
+		
+		const file1FullPath = file1Uri.path;
+		const file2FullPath = file2Uri.path;
+		const useFullPaths = file1Name === file2Name || (file1FullPath.length + file2FullPath.length < 100);
+		
+		const title = useFullPaths 
+			? `${file1FullPath} ↔ ${file2FullPath} (.config Filtered)`
+			: `${file1DisplayName} ↔ ${file2DisplayName} (.config Filtered)`;
+		
+		console.log(`Opening .config diff with title: ${title}`);
+		console.log(`Left file: ${tempFile1.toString()}`);
+		console.log(`Right file: ${tempFile2.toString()}`);
+		
+		await vscode.commands.executeCommand('vscode.diff', tempFile1, tempFile2, title);
+
+		// Show notification with full file paths
+		const shortPath1 = file1FullPath.split('/').slice(-3).join('/');
+		const shortPath2 = file2FullPath.split('/').slice(-3).join('/');
+		vscode.window.showInformationMessage(
+			`Config comparison: ${shortPath1} ↔ ${shortPath2}`,
+			'Show Details'
+		).then(selection => {
+			if (selection === 'Show Details') {
+				vscode.window.showInformationMessage(
+					`Full paths:\nLeft: ${file1FullPath}\nRight: ${file2FullPath}`,
+					{ modal: true }
+				);
+			}
+		});
+		
+		// Clean up temp files after a delay
+		setTimeout(async () => {
+			try {
+				await vscode.workspace.fs.delete(tempFile1);
+				await vscode.workspace.fs.delete(tempFile2);
+			} catch (error) {
+				// Ignore cleanup errors
+			}
+		}, 30000); // Clean up after 30 seconds
+		
+	} catch (error) {
+		vscode.window.showErrorMessage(`Error comparing .config files: ${error}`);
 	}
 }
 
@@ -596,6 +766,78 @@ function basicCommentRemoval(content: string, options: FilterOptions): string {
 		})
 		.join('\n')
 		.replace(/\n{3,}/g, '\n\n'); // Replace multiple empty lines with just two
+}
+
+function filterConfigComments(content: string, options: FilterOptions): string {
+	// Check if comment filtering is enabled
+	if (!options.stripLineComments && !options.stripBlockComments) {
+		// If comment filtering is disabled, only apply sorting if enabled
+		if (options.sortProperties) {
+			const lines = content.split('\n');
+			const configLines = lines.filter(line => {
+				const trimmed = line.trim();
+				return trimmed && trimmed.includes('=') && !trimmed.startsWith('#');
+			});
+			
+			configLines.sort((a, b) => {
+				const keyA = a.trim().split('=')[0];
+				const keyB = b.trim().split('=')[0];
+				return keyA.localeCompare(keyB);
+			});
+			
+			return configLines.join('\n');
+		}
+		return content;
+	}
+
+	// Filter .config files: remove comments and optionally sort entries
+	const lines = content.split('\n');
+	let filtered: string[] = [];
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+		
+		// Skip empty lines if normalizing whitespace
+		if (options.normalizeWhitespace && trimmed === '') {
+			continue;
+		} else if (!options.normalizeWhitespace && trimmed === '') {
+			filtered.push(line);
+			continue;
+		}
+		
+		// Skip comment-only lines (lines starting with #) if comment filtering is enabled
+		if (options.stripLineComments && trimmed.startsWith('#')) {
+			continue;
+		} else if (!options.stripLineComments && trimmed.startsWith('#')) {
+			filtered.push(line);
+			continue;
+		}
+		
+		// Remove inline comments from config entries (after the = sign) if enabled
+		const commentIndex = options.stripLineComments ? trimmed.indexOf('#') : -1;
+		const configLine = commentIndex !== -1 
+			? trimmed.substring(0, commentIndex).trim() 
+			: trimmed;
+		
+		// Only add non-empty config lines with = sign (actual config entries)
+		if (configLine && configLine.includes('=')) {
+			filtered.push(configLine);
+		} else if (configLine && !configLine.includes('=')) {
+			// Non-config lines (if comment filtering is disabled)
+			filtered.push(options.stripLineComments ? configLine : line);
+		}
+	}
+
+	// Sort config entries if sorting is enabled
+	if (options.sortProperties) {
+		filtered.sort((a, b) => {
+			const keyA = a.split('=')[0];
+			const keyB = b.split('=')[0];
+			return keyA.localeCompare(keyB);
+		});
+	}
+
+	return filtered.join('\n');
 }
 
 function semanticDtsNormalization(content: string, options: FilterOptions): string {
@@ -1222,7 +1464,18 @@ async function runSavedComparison(config: ComparisonConfig) {
 			return;
 		}
 
-		await compareDtsFiles(file1Uri, file2Uri, context, config.filterOptions);
+		// Determine file type and use appropriate comparison function
+		const fileName1 = path.basename(file1Uri.path);
+		const fileName2 = path.basename(file2Uri.path);
+		
+		if ((fileName1 === '.config' || fileName1.endsWith('.config')) && 
+			(fileName2 === '.config' || fileName2.endsWith('.config'))) {
+			// Both files are .config files, use config comparison
+			await compareConfigFilesImpl(file1Uri, file2Uri, context, config.filterOptions);
+		} else {
+			// Default to DTS comparison
+			await compareZephyrFiles(file1Uri, file2Uri, context, config.filterOptions);
+		}
 	} catch (error) {
 		vscode.window.showErrorMessage(`Error running comparison "${config.name}": ${error}`);
 	}
