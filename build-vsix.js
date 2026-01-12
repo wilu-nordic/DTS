@@ -32,6 +32,10 @@ archive.on('error', (err) => {
 
 archive.pipe(output);
 
+// Add manifest files first (required for VSIX)
+archive.file('vsix-build/[Content_Types].xml', { name: '[Content_Types].xml' });
+archive.file('vsix-build/extension.vsixmanifest', { name: 'extension.vsixmanifest' });
+
 // Add files to archive under 'extension/' path for proper VSIX format
 const filesToInclude = [
   'out/',
