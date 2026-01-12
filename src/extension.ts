@@ -617,7 +617,8 @@ function semanticDtsNormalization(content: string, options: FilterOptions): stri
 		const trimmed = line.trim();
 		
 		// If this is a node declaration, extract and process the entire node
-		if (trimmed.match(/^[a-zA-Z0-9_-]+(\s*:\s*.*)?(@[0-9a-fA-F]+)?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*\{/)) {
+		// Match patterns like: "memory@2f0b2000 {", "cpuapp_data: memory@2f000000 {", "cpus {", "reserved-memory {"
+		if (trimmed.match(/^[a-zA-Z0-9_-]+(@[0-9a-fA-F]+)?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*:\s*.+\{/)) {
 			// Extract the complete node
 			const nodeLines = [];
 			let braceCount = 0;
@@ -671,8 +672,9 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 			continue;
 		}
 		
-		// Better DTS child node detection: look for both "name: something {" and "name {" patterns
-		if (trimmed.match(/^[a-zA-Z0-9_-]+(\s*:\s*.*)?(@[0-9a-fA-F]+)?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*\{/)) {
+		// Better DTS child node detection: look for both "name: something {" and "name@address {" patterns
+		// Match patterns like: "memory@2f0b2000 {", "cpuapp_data: memory@2f000000 {", "cpus {", "reserved-memory {"
+		if (trimmed.match(/^[a-zA-Z0-9_-]+(@[0-9a-fA-F]+)?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*:\s*.+\{/)) {
 			// This is a child node, extract the complete node
 			const nodeLines: string[] = [];
 			let braceCount = 0;
@@ -785,12 +787,12 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 		// Recursively process each child node with increased depth
 		const processedLines = finalizeNode(childNodeLines, options, depth + 1);
 		
-		// Extract node name for sorting (e.g., "cpuapp_data" from "cpuapp_data: memory@2f000000 {" or "cpus" from "cpus {")
+		// Extract node name for sorting (e.g., "cpuapp_data" from "cpuapp_data: memory@2f000000 {" or "memory@2f0b2000" from "memory@2f0b2000 {")
 		const nodeDeclaration = childNodeLines[0];
 		let nodeNameMatch = nodeDeclaration.match(/^\s*([a-zA-Z0-9_-]+)\s*:/);
 		if (!nodeNameMatch) {
-			// Try pattern without colon (e.g., "cpus {")
-			nodeNameMatch = nodeDeclaration.match(/^\s*([a-zA-Z0-9_-]+)\s*\{/);
+			// Try pattern without colon (e.g., "cpus {" or "memory@2f0b2000 {")
+			nodeNameMatch = nodeDeclaration.match(/^\s*([a-zA-Z0-9_@]+)(?=\s*\{)/);
 		}
 		const sortKey = nodeNameMatch ? nodeNameMatch[1].trim() : 'zzz_unknown';
 		
