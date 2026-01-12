@@ -26,21 +26,29 @@
     "embedded"
   ],
   "contributes": {
+    "languages": [
+      {
+        "id": "dts",
+        "aliases": ["Device Tree Source", "DTS"],
+        "extensions": [".dts", ".dtsi"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
     "commands": [
       {
         "command": "dtsDiff.compareFiles",
-        "title": "DTS: Compare Files (Skip Comments)",
+        "title": "DTS: Compare Files",
         "icon": "$(diff)"
       },
       {
         "command": "dtsDiff.compareWithClipboard", 
-        "title": "DTS: Compare with Clipboard (Skip Comments)",
+        "title": "DTS: Compare with Clipboard",
         "icon": "$(clippy)"
       },
       {
         "command": "dtsDiff.stripComments",
-        "title": "DTS: Strip Comments from File",
-        "icon": "$(clear-all)"
+        "title": "DTS: Copy formatted file",
+        "icon": "$(clippy)"
       },
       {
         "command": "dtsDiff.saveComparison",

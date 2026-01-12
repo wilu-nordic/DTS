@@ -126,15 +126,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 			return;
 		}
 
-		// Ask if auto-refresh should be enabled
-		const autoRefreshChoice = await vscode.window.showQuickPick(
-			['Yes - Auto refresh on file changes', 'No - Manual refresh only'],
-			{ placeHolder: 'Enable auto-refresh when files change?' }
-		);
-
-		const autoRefresh = autoRefreshChoice?.startsWith('Yes') ?? false;
-
-		await saveComparisonConfig(activeEditor.document.uri, fileUri[0], configName, autoRefresh, defaultOptions);
+		await saveComparisonConfig(activeEditor.document.uri, fileUri[0], configName, false, defaultOptions);
 	});
 
 	// Register command to load and run saved comparison
