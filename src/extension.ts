@@ -607,22 +607,28 @@ function semanticDtsNormalization(content: string, options: FilterOptions): stri
 		return content;
 	}
 	
-	// Simple line-by-line processing to avoid recursion issues
+	console.log('\n=== DEBUG: semanticDtsNormalization started ===');
+	// Collect and sort top-level nodes before processing
 	const lines = content.split('\n');
 	const result: string[] = [];
+	
+	// Collect all top-level nodes and non-node lines
+	const topLevelNodes: Array<{lines: string[], sortKey: string, startLine: number}> = [];
+	const nonNodeLines: Array<{line: string, lineNumber: number}> = [];
 	
 	let i = 0;
 	while (i < lines.length) {
 		const line = lines[i];
 		const trimmed = line.trim();
 		
-		// If this is a node declaration, extract and process the entire node
+		// If this is a node declaration, extract the complete node
 		// Match patterns like: "memory@2f0b2000 {", "cpuapp_data: memory@2f000000 {", "cpus {", "reserved-memory {"
 		if (trimmed.match(/^[a-zA-Z0-9_-]+(@[0-9a-fA-F]+)?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*:\s*.+\{/)) {
+			console.log(`DEBUG: Found top-level node at line ${i}: "${trimmed}"`);
 			// Extract the complete node
 			const nodeLines = [];
 			let braceCount = 0;
-			let startIndex = i;
+			const startLine = i;
 			
 			do {
 				nodeLines.push(lines[i]);
@@ -631,14 +637,71 @@ function semanticDtsNormalization(content: string, options: FilterOptions): stri
 				i++;
 			} while (braceCount > 0 && i < lines.length);
 			
-			// Process this single node with finalizeNode
-			const processedNode = finalizeNode(nodeLines, options);
-			result.push(...processedNode);
+			const endLine = i - 1;
+			console.log(`DEBUG: Top-level node spans lines ${startLine} to ${endLine} (${nodeLines.length} lines total)`);
+			
+			// Extract node name for sorting
+			const nodeDeclaration = nodeLines[0];
+			let nodeNameMatch = nodeDeclaration.match(/^\s*([a-zA-Z0-9_-]+)\s*:/);
+			if (!nodeNameMatch) {
+				// Try pattern without colon (e.g., "cpus {" or "memory@2f0b2000 {")
+				nodeNameMatch = nodeDeclaration.match(/^\s*([a-zA-Z0-9_@]+)(?=\s*\{)/);
+			}
+			const sortKey = nodeNameMatch ? nodeNameMatch[1].trim() : 'zzz_unknown';
+			
+			console.log(`DEBUG: Top-level node sort key: "${sortKey}"`);
+			topLevelNodes.push({
+				lines: nodeLines,
+				sortKey: sortKey,
+				startLine: startLine
+			});
 		} else {
-			// Regular line (property or comment), add as-is
-			result.push(line);
+			// Regular line (property or comment), store with line number
+			nonNodeLines.push({line: line, lineNumber: i});
 			i++;
 		}
+	}
+	
+	// Sort top-level nodes if enabled
+	if (options.sortProperties && topLevelNodes.length > 1) {
+		const beforeSort = topLevelNodes.map(n => n.sortKey);
+		topLevelNodes.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+		const afterSort = topLevelNodes.map(n => n.sortKey);
+		console.log(`DEBUG: Top-level nodes sorted:`);
+		console.log(`  Before: [${beforeSort.join(', ')}]`);
+		console.log(`  After:  [${afterSort.join(', ')}]`);
+	}
+	
+	// Add non-node lines that come before any nodes
+	const firstNodeLine = topLevelNodes.length > 0 ? Math.min(...topLevelNodes.map(n => n.startLine)) : lines.length;
+	nonNodeLines
+		.filter(item => item.lineNumber < firstNodeLine)
+		.forEach(item => result.push(item.line));
+	
+	// Process and add sorted top-level nodes
+	topLevelNodes.forEach((node, idx) => {
+		console.log(`DEBUG: Processing top-level node ${idx + 1}/${topLevelNodes.length}: "${node.sortKey}"`);
+		const processedNode = finalizeNode(node.lines, options, 0, node.sortKey);
+		result.push(...processedNode);
+		console.log(`DEBUG: Top-level node processed, added ${processedNode.length} lines to result`);
+		
+		// Add any non-node lines that were between this node and the next
+		if (idx < topLevelNodes.length - 1) {
+			const nextNodeLine = topLevelNodes[idx + 1].startLine;
+			const currentNodeEndLine = node.startLine + node.lines.length - 1;
+			nonNodeLines
+				.filter(item => item.lineNumber > currentNodeEndLine && item.lineNumber < nextNodeLine)
+				.forEach(item => result.push(item.line));
+		}
+	});
+	
+	// Add any remaining non-node lines after all nodes
+	if (topLevelNodes.length > 0) {
+		const lastNodeEndLine = topLevelNodes[topLevelNodes.length - 1].startLine + 
+			topLevelNodes[topLevelNodes.length - 1].lines.length - 1;
+		nonNodeLines
+			.filter(item => item.lineNumber > lastNodeEndLine)
+			.forEach(item => result.push(item.line));
 	}
 	
 	return result.join('\n');
@@ -646,8 +709,11 @@ function semanticDtsNormalization(content: string, options: FilterOptions): stri
 
 
 
-function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number = 0): string[] {
+function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number = 0, nodeDesc: string = 'unknown'): string[] {
 	if (nodeLines.length < 2 || depth > 5) return nodeLines; // Prevent infinite recursion
+	
+	const indent = '  '.repeat(depth);
+	console.log(`${indent}DEBUG: finalizeNode processing "${nodeDesc}" (depth ${depth}, ${nodeLines.length} lines)`);
 	
 	const firstLine = nodeLines[0]; // Node declaration (e.g., "gpio6: gpio@938c00 {")
 	const lastLine = nodeLines[nodeLines.length - 1]; // Closing brace
@@ -675,10 +741,11 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 		// Better DTS child node detection: look for both "name: something {" and "name@address {" patterns
 		// Match patterns like: "memory@2f0b2000 {", "cpuapp_data: memory@2f000000 {", "cpus {", "reserved-memory {"
 		if (trimmed.match(/^[a-zA-Z0-9_-]+(@[0-9a-fA-F]+)?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*:\s*.+\{/)) {
+			console.log(`${indent}  DEBUG: Found child node: "${trimmed}"`);
 			// This is a child node, extract the complete node
 			const nodeLines: string[] = [];
 			let braceCount = 0;
-			let startIndex = i;
+			const childStartIdx = i;
 			
 			// Extract complete child node
 			do {
@@ -693,6 +760,7 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 				}
 			} while (braceCount > 0 && i < contentLines.length);
 			
+			console.log(`${indent}  DEBUG: Child node extracted (${nodeLines.length} lines)`);
 			childNodes.push(nodeLines);
 		}
 		// It's a property line
@@ -783,9 +851,14 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 	// Process child nodes if enabled 
 	const processedChildNodes: Array<{lines: string[], sortKey: string}> = [];
 	
-	for (const childNodeLines of childNodes) {
+	console.log(`${indent}DEBUG: Processing ${childNodes.length} child nodes`);
+	for (let idx = 0; idx < childNodes.length; idx++) {
+		const childNodeLines = childNodes[idx];
+		const childDesc = childNodeLines[0].trim();
+		console.log(`${indent}  DEBUG: Processing child ${idx + 1}/${childNodes.length}: "${childDesc}"`);
+		
 		// Recursively process each child node with increased depth
-		const processedLines = finalizeNode(childNodeLines, options, depth + 1);
+		const processedLines = finalizeNode(childNodeLines, options, depth + 1, childDesc);
 		
 		// Extract node name for sorting (e.g., "cpuapp_data" from "cpuapp_data: memory@2f000000 {" or "memory@2f0b2000" from "memory@2f0b2000 {")
 		const nodeDeclaration = childNodeLines[0];
@@ -796,6 +869,7 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 		}
 		const sortKey = nodeNameMatch ? nodeNameMatch[1].trim() : 'zzz_unknown';
 		
+		console.log(`${indent}  DEBUG: Child node sort key: "${sortKey}"`);
 		processedChildNodes.push({
 			lines: processedLines,
 			sortKey: sortKey
@@ -804,11 +878,18 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 	
 	// Sort child nodes if enabled (this should sort cpuapp_data, cpurad_data, etc.)
 	if (options.sortProperties && processedChildNodes.length > 1) {
+		const beforeSort = processedChildNodes.map(n => n.sortKey);
 		processedChildNodes.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+		const afterSort = processedChildNodes.map(n => n.sortKey);
+		console.log(`${indent}DEBUG: Child nodes sorted:`);
+		console.log(`${indent}  Before: [${beforeSort.join(', ')}]`);
+		console.log(`${indent}  After:  [${afterSort.join(', ')}]`);
 	}
 	
 	// Rebuild the node with proper indentation
 	const result = [firstLine];
+	
+	console.log(`${indent}DEBUG: Rebuilding node with ${properties.length} properties and ${processedChildNodes.length} child nodes`);
 	
 	// Add properties first
 	properties.forEach(prop => {
@@ -818,13 +899,15 @@ function finalizeNode(nodeLines: string[], options: FilterOptions, depth: number
 	});
 	
 	// Add child nodes after properties
-	processedChildNodes.forEach(node => {
+	processedChildNodes.forEach((node, idx) => {
+		console.log(`${indent}  DEBUG: Adding child node ${idx + 1}: "${node.sortKey}" (${node.lines.length} lines)`);
 		node.lines.forEach(line => {
 			result.push(line);
 		});
 	});
 	
 	result.push(lastLine);
+	console.log(`${indent}DEBUG: Node rebuild complete (${result.length} total lines)`);
 	return result;
 }
 

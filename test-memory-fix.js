@@ -15,8 +15,11 @@ function normalizeHexValues(line) {
     });
 }
 
-function finalizeNode(nodeLines, options, depth = 0) {
+function finalizeNode(nodeLines, options, depth = 0, nodeDesc = 'unknown') {
     if (nodeLines.length < 2 || depth > 5) return nodeLines;
+    
+    const indent = '  '.repeat(depth);
+    console.log(`${indent}DEBUG: finalizeNode processing "${nodeDesc}" (depth ${depth}, ${nodeLines.length} lines)`);
     
     const firstLine = nodeLines[0];
     const lastLine = nodeLines[nodeLines.length - 1];
@@ -40,21 +43,24 @@ function finalizeNode(nodeLines, options, depth = 0) {
         
         // Using the new improved regex patterns
         if (trimmed.match(/^[a-zA-Z0-9_-]+(@[0-9a-fA-F]+)?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*:\s*.+\{/)) {
+            console.log(`${indent}  DEBUG: Found child node: "${trimmed}"`);
             const nodeLines = [];
             let braceCount = 0;
+            const childStartIdx = i;
             
             do {
                 if (i < contentLines.length) {
                     const nodeLine = contentLines[i];
                     nodeLines.push(nodeLine);
                     
-                    const openBraces = (nodeLine.match(/{/g) || []).length;
-                    const closeBraces = (nodeLine.match(/}/g) || []).length;
+                    const openBraces = (nodeLine.match(/\{/g) || []).length;
+                    const closeBraces = (nodeLine.match(/\}/g) || []).length;
                     braceCount += openBraces - closeBraces;
                     i++;
                 }
             } while (braceCount > 0 && i < contentLines.length);
             
+            console.log(`${indent}  DEBUG: Child node extracted (${nodeLines.length} lines)`);
             childNodes.push(nodeLines);
         } else {
             propertyLines.push(line);
@@ -96,8 +102,13 @@ function finalizeNode(nodeLines, options, depth = 0) {
     // Process child nodes
     const processedChildNodes = [];
     
-    for (const childNodeLines of childNodes) {
-        const processedLines = finalizeNode(childNodeLines, options, depth + 1);
+    console.log(`${indent}DEBUG: Processing ${childNodes.length} child nodes`);
+    for (let idx = 0; idx < childNodes.length; idx++) {
+        const childNodeLines = childNodes[idx];
+        const childDesc = childNodeLines[0].trim();
+        console.log(`${indent}  DEBUG: Processing child ${idx + 1}/${childNodes.length}: "${childDesc}"`);
+        
+        const processedLines = finalizeNode(childNodeLines, options, depth + 1, childDesc);
         
         // Use the new improved node name extraction
         const nodeDeclaration = childNodeLines[0];
@@ -108,6 +119,7 @@ function finalizeNode(nodeLines, options, depth = 0) {
         }
         const sortKey = nodeNameMatch ? nodeNameMatch[1].trim() : 'zzz_unknown';
         
+        console.log(`${indent}  DEBUG: Child node sort key: "${sortKey}"`);
         processedChildNodes.push({
             lines: processedLines,
             sortKey: sortKey
@@ -115,24 +127,33 @@ function finalizeNode(nodeLines, options, depth = 0) {
     }
     
     if (options.sortProperties && processedChildNodes.length > 1) {
+        const beforeSort = processedChildNodes.map(n => n.sortKey);
         processedChildNodes.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+        const afterSort = processedChildNodes.map(n => n.sortKey);
+        console.log(`${indent}DEBUG: Child nodes sorted:`);
+        console.log(`${indent}  Before: [${beforeSort.join(', ')}]`);
+        console.log(`${indent}  After:  [${afterSort.join(', ')}]`);
     }
     
     // Rebuild the node
     const result = [firstLine];
+    
+    console.log(`${indent}DEBUG: Rebuilding node with ${properties.length} properties and ${processedChildNodes.length} child nodes`);
     
     properties.forEach(prop => {
         const cleanLine = prop.normalized.trim();
         result.push(propertyIndent + cleanLine);
     });
     
-    processedChildNodes.forEach(node => {
+    processedChildNodes.forEach((node, idx) => {
+        console.log(`${indent}  DEBUG: Adding child node ${idx + 1}: "${node.sortKey}" (${node.lines.length} lines)`);
         node.lines.forEach(line => {
             result.push(line);
         });
     });
     
     result.push(lastLine);
+    console.log(`${indent}DEBUG: Node rebuild complete (${result.length} total lines)`);
     return result;
 }
 
@@ -141,6 +162,7 @@ function semanticDtsNormalization(content, options) {
         return content;
     }
     
+    console.log('\n=== DEBUG: semanticDtsNormalization started ===');
     const lines = content.split('\n');
     const result = [];
     
@@ -151,8 +173,10 @@ function semanticDtsNormalization(content, options) {
         
         // Using the new improved regex patterns
         if (trimmed.match(/^[a-zA-Z0-9_-]+(@[0-9a-fA-F]+)?\s*\{/) || trimmed.match(/^[a-zA-Z0-9_-]+\s*:\s*.+\{/)) {
+            console.log(`DEBUG: Found node at line ${i}: "${trimmed}"`);
             const nodeLines = [];
             let braceCount = 0;
+            const startLine = i;
             
             do {
                 nodeLines.push(lines[i]);
@@ -161,8 +185,13 @@ function semanticDtsNormalization(content, options) {
                 i++;
             } while (braceCount > 0 && i < lines.length);
             
-            const processedNode = finalizeNode(nodeLines, options);
+            const endLine = i - 1;
+            console.log(`DEBUG: Node spans lines ${startLine} to ${endLine} (${nodeLines.length} lines total)`);
+            console.log(`DEBUG: Node content preview: ${nodeLines[0].trim()} ... ${nodeLines[nodeLines.length-1].trim()}`);
+            
+            const processedNode = finalizeNode(nodeLines, options, 0, trimmed);
             result.push(...processedNode);
+            console.log(`DEBUG: Node processed, added ${processedNode.length} lines to result`);
         } else {
             result.push(line);
             i++;
