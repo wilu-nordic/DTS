@@ -32,7 +32,7 @@ archive.on('error', (err) => {
 
 archive.pipe(output);
 
-// Add files to archive
+// Add files to archive under 'extension/' path for proper VSIX format
 const filesToInclude = [
   'out/',
   'package.json',
@@ -46,16 +46,16 @@ for (const file of filesToInclude) {
   if (fs.existsSync(fullPath)) {
     const stat = fs.statSync(fullPath);
     if (stat.isDirectory()) {
-      archive.directory(fullPath, file);
+      archive.directory(fullPath, `extension/${file}`);
     } else {
-      archive.file(fullPath, { name: file });
+      archive.file(fullPath, { name: `extension/${file}` });
     }
   }
 }
 
-// Add node_modules if needed
+// Add node_modules under extension path
 if (fs.existsSync('node_modules')) {
-  archive.directory('node_modules', 'node_modules');
+  archive.directory('node_modules', 'extension/node_modules');
 }
 
 archive.finalize();
