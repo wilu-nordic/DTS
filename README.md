@@ -1,6 +1,6 @@
 # ZephyrDiff Tool
 
-A powerful VS Code extension for comparing and formatting Zephyr Device Tree Source (.dts) files with comprehensive semantic normalization.
+A powerful VS Code extension for comparing and formatting Zephyr Device Tree Source (.dts) files and Zephyr configuration (.config) files with comprehensive semantic normalization.
 
 ## Features
 
@@ -15,9 +15,10 @@ A powerful VS Code extension for comparing and formatting Zephyr Device Tree Sou
 
 ### 📋 **Comparison Options**
 - **Compare two DTS files** with full semantic normalization
+- **Compare two .config files** with comment filtering and alphabetical sorting
 - **Compare with clipboard** - Quick comparison with copied DTS content
 - **Copy formatted file** - Get fully normalized DTS content in clipboard
-- **Save/load comparison configurations** - Reuse comparison setups
+- **Save/load comparison configurations** - Reuse comparison setups for both DTS and .config files
 
 ### ⚙️ **Advanced Configuration**
 - **Configurable normalization options** - Enable/disable specific features
@@ -62,18 +63,38 @@ A powerful VS Code extension for comparing and formatting Zephyr Device Tree Sou
   - Comment stripping
   - Whitespace normalization
 
+### Compare Zephyr .config Files
+1. Open a `.config` file in VS Code
+2. Right-click in the file explorer or editor  
+3. Select **"ZephyrDiff: Compare Zephyr .config Files"**
+4. Choose the second .config file to compare
+5. View diff with comments filtered and config entries sorted alphabetically
+
+### Save .config Comparison Configuration
+1. Open a `.config` file and run **"ZephyrDiff: Save Zephyr .config Comparison Configuration"**
+2. Enter a configuration name
+3. Select second .config file to compare
+4. Configuration saved for future use with proper filtering options
+
 ## Commands
 
 All commands are available via Command Palette (`Ctrl+Shift+P`):
 
-- **`ZephyrDiff: Compare Files`** - Compare two DTS files
-- **`ZephyrDiff: Compare with Clipboard`** - Compare with clipboard content
-- **`ZephyrDiff: Copy formatted file`** - Copy normalized DTS to clipboard
-- **`ZephyrDiff: Save Comparison Configuration`** - Save comparison setup
-- **`ZephyrDiff: Load Saved Comparison`** - Run saved comparison
-- **`ZephyrDiff: Manage Comparison Configurations`** - Manage saved configurations
-- **`ZephyrDiff: Configure Advanced Comparison Options`** - Configure normalization options
-- **`ZephyrDiff: Delete Saved Comparison`** - Remove saved configuration
+**DTS File Commands:**
+- **`ZephyrDiff: Compare DTS Files`** - Compare two DTS files
+- **`ZephyrDiff: Compare DTS with Clipboard`** - Compare with clipboard content
+- **`ZephyrDiff: Copy formatted DTS file`** - Copy normalized DTS to clipboard
+- **`ZephyrDiff: Save DTS Comparison Configuration`** - Save DTS comparison setup
+
+**.config File Commands:**
+- **`ZephyrDiff: Compare Zephyr .config Files`** - Compare two .config files with filtering and sorting
+- **`ZephyrDiff: Save Zephyr .config Comparison Configuration`** - Save .config comparison setup
+
+**Management Commands:**
+- **`ZephyrDiff: Load Saved DTS Comparison`** - Run saved comparison
+- **`ZephyrDiff: Manage DTS Comparison Configurations`** - Manage saved configurations
+- **`ZephyrDiff: Configure Advanced DTS Comparison Options`** - Configure normalization options
+- **`ZephyrDiff: Delete Saved DTS Comparison`** - Remove saved configuration
 
 ## Semantic Normalization
 
@@ -117,16 +138,54 @@ gpio6: gpio@938c00 {
 // Array normalization: <0x1 0x2> → < 0x1 0x2 >
 ```
 
+## .config File Processing
+
+The extension also handles Zephyr `.config` files with specialized processing:
+
+### Comment Filtering
+```config
+# Before: With comments
+# This is a board configuration
+CONFIG_BOARD="nrf52840dk_nrf52840"  # Development board
+CONFIG_SOC_SERIES_NRF52X=y
+# CONFIG_SERIAL is not set
+
+# After: Comments removed
+CONFIG_BOARD="nrf52840dk_nrf52840"
+CONFIG_SOC_SERIES_NRF52X=y
+```
+
+### Alphabetical Sorting
+```config
+# Before: Random order
+CONFIG_SERIAL=y
+CONFIG_BOARD="nrf52840dk_nrf52840"
+CONFIG_ARM=y
+
+# After: Alphabetical order  
+CONFIG_ARM=y
+CONFIG_BOARD="nrf52840dk_nrf52840"
+CONFIG_SERIAL=y
+```
+
 ## Requirements
 
 - VS Code 1.74.0 or higher
-- Device Tree Source files (`.dts`, `.dtsi`)
+- Device Tree Source files (`.dts`, `.dtsi`)  
+- Zephyr configuration files (`.config`)
 
 ## Known Issues
 
 None at this time.
 
 ## Release Notes
+
+### 1.0.4
+- **Rebranded to ZephyrDiff Tool** - Updated extension name and branding to focus on Zephyr projects
+- **Enhanced command titles** - More descriptive context menu options that clearly indicate DTS/config file comparison
+- **Improved .config file support** - Added .config commands to explorer context menu and fixed filtering/sorting
+- **Fixed saved comparisons** - Properly detect file types and use appropriate comparison functions
+- **Updated keywords** - Added "zephyr" and "zephyrdiff" for better discoverability
 
 ### 1.0.0
 - **Complete semantic DTS normalization**
