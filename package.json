@@ -1,8 +1,8 @@
 {
-  "name": "dts-zephyrdiff-tool",
-  "displayName": "DTS ZephyrDiff Tool",
-  "description": "Compare Zephyr Device Tree Source files with comment filtering",
-  "version": "1.0.4",
+  "name": "zephyrdiff-tool",
+  "displayName": "ZephyrDiff Tool",
+  "description": "Compare Zephyr Device Tree Source and Kconfig files with ease. ZephyrDiff Tool provides a seamless way to identify differences between DTS and .config files, making it easier for developers to manage and maintain their Zephyr projects.",
+  "version": "1.0.5",
   "publisher": "wilu",
   "engines": {
     "vscode": "^1.74.0"
@@ -12,6 +12,7 @@
   ],
   "activationEvents": [
     "onLanguage:dts",
+    "onLanguage:kconfig",
     "onCommand:zephyrDiff.compareConfigFiles",
     "onCommand:zephyrDiff.saveConfigComparison"
   ],
@@ -211,6 +212,6 @@
   },
   "dependencies": {
     "archiver": "^5.3.1",
-    "vsce": "^2.15.0"
+    "vsce": "^1.95.1"
   }
 }

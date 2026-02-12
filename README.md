@@ -180,6 +180,10 @@ None at this time.
 
 ## Release Notes
 
+### 1.0.5
+- **Package naming cleanup** - Simplified package name to "zephyrdiff-tool" for cleaner marketplace presentation
+- **Dependency updates** - Updated vsce version for better compatibility
+
 ### 1.0.4
 - **Rebranded to ZephyrDiff Tool** - Updated extension name and branding to focus on Zephyr projects
 - **Enhanced command titles** - More descriptive context menu options that clearly indicate DTS/config file comparison
